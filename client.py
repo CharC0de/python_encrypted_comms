@@ -5,6 +5,14 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import secrets
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get host and port from environment variables
+host = os.getenv('HOST', 'localhost')
+port = int(os.getenv('PORT', 5000))
 
 # Load RSA keys from PEM files
 
@@ -79,9 +87,6 @@ def aes_decrypt(ciphertext, aes_key, iv):
 
 
 def client_program():
-    host = 'localhost'
-    port = 5000
-
     client_socket = socket.socket()
     client_socket.connect((host, port))
 
@@ -94,7 +99,6 @@ def client_program():
     message = input(" -> ")
 
     while message.lower().strip() != 'exit':
-
         iv, encrypted_message = aes_encrypt(message.encode(), aes_key)
 
         client_socket.send(base64.b64encode(iv) + b'::' +
