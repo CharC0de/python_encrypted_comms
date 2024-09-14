@@ -93,23 +93,25 @@ def client_program():
     aes_key = secrets.token_bytes(32)
 
     encrypted_aes_key = encrypt_aes_key_with_rsa(aes_key)
-
-    client_socket.send(base64.b64encode(encrypted_aes_key))
+    client_socket.send(base64.b64encode(encrypted_aes_key) + b'\n')
 
     message = input(" -> ")
 
     while message.lower().strip() != 'exit':
         iv, encrypted_message = aes_encrypt(message.encode(), aes_key)
 
-        client_socket.send(base64.b64encode(iv) + b'::' +
-                           base64.b64encode(encrypted_message))
+        # Send IV and message, separated by newline
+        client_socket.send(base64.b64encode(iv) + b'\n' +
+                           base64.b64encode(encrypted_message) + b'\n')
 
-        data = client_socket.recv(1024).split(b'::')
-        iv, encrypted_response = base64.b64decode(
-            data[0]), base64.b64decode(data[1])
+        # Receive response
+        data = client_socket.recv(1024).split(b'\n')
+        if len(data) == 2:
+            iv, encrypted_response = base64.b64decode(
+                data[0]), base64.b64decode(data[1])
 
-        decrypted_response = aes_decrypt(encrypted_response, aes_key, iv)
-        print(f"Received from server: {decrypted_response.decode()}")
+            decrypted_response = aes_decrypt(encrypted_response, aes_key, iv)
+            print(f"Received from server: {decrypted_response.decode()}")
 
         message = input(" -> ")
 
