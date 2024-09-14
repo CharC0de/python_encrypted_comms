@@ -1,73 +1,54 @@
 import socket
 import threading
+from crypto_utils import generate_rsa_key_pair, encrypt_message, decrypt_message, encrypt_aes_key, decrypt_aes_key
+from Crypto.Random import get_random_bytes
+private_key, public_key = generate_rsa_key_pair()
+HOST = '0.0.0.0'
+PORT = 5000
 
-# List to store connected clients
-clients = []
-
-# Function to broadcast a message to all clients
-
-
-def broadcast(message, conn):
-    for client in clients:
-        if client != conn:  # Send to all except the sender
-            try:
-                print('sent')
-                client.send(message.encode())
-            except:
-                # Handle error and remove the client if it disconnects
-                client.close()
-                clients.remove(client)
-
-# Function to handle each client connection
+clients = {}
+client_keys = {}
 
 
-def handle_client(conn, address):
-    print(f"New connection from: {address}")
-    print(clients)
-    conn.send("Welcome to the server!".encode())
-
+def handle_client(client_socket):
+    global clients, client_keys
     while True:
         try:
-            data = conn.recv(1024).decode()
-            if not data:
+            encrypted_message = client_socket.recv(2048)
+            if not encrypted_message:
                 break
-            print(f"Received from {address}: {data}")
-            broadcast(f"{address} says: {data}", conn)
+            aes_key = client_keys[client_socket]
+            decrypted_message = decrypt_message(encrypted_message, aes_key)
+            broadcast(decrypted_message, client_socket)
         except:
-            # If the client disconnects, close connection and remove from list
-            print(f"Connection lost from {address}")
+            clients.pop(client_socket)
+            client_socket.close()
             break
 
-    conn.close()
-    clients.remove(conn)
+
+def broadcast(message, sender_socket):
+    for client in clients:
+        if client != sender_socket:
+            aes_key = client_keys[client]
+            encrypted_message = encrypt_message(message, aes_key)
+            client.send(encrypted_message)
 
 
-def server_program():
-    host = "0.0.0.0"
-    port = 5000
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind((HOST, PORT))
+server_socket.listen(5)
+print(f"Server started on {HOST}:{PORT}")
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind((host, port))
+while True:
+    client_socket, addr = server_socket.accept()
+    clients[client_socket] = addr
 
-    server_socket.listen(5)  # Listen for up to 5 connections
-    print(f"Server is listening on {host}:{port}...")
+    client_public_key = client_socket.recv(2048)
+    aes_key = get_random_bytes(16)
+    encrypted_aes_key = encrypt_aes_key(aes_key, client_public_key)
+    client_socket.send(encrypted_aes_key)
+    client_keys[client_socket] = aes_key
 
-    try:
-        while True:
-            conn, address = server_socket.accept()  # Accept a new connection
-            clients.append(conn)  # Add the new client to the list
-            # Start a new thread for each client
-            client_thread = threading.Thread(
-                target=handle_client, args=(conn, address))
-            client_thread.start()
-    except KeyboardInterrupt:
-        print("Server is shutting down.")
-    finally:
-        for client in clients:
-            client.close()  # Close all client connections
-        server_socket.close()  # Close the server socket
-
-
-if __name__ == '__main__':
-    server_program()
+    client_thread = threading.Thread(
+        target=handle_client, args=(client_socket,))
+    client_thread.start()
