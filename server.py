@@ -11,6 +11,7 @@ def broadcast(message, conn):
     for client in clients:
         if client != conn:  # Send to all except the sender
             try:
+                print('sent')
                 client.send(message.encode())
             except:
                 # Handle error and remove the client if it disconnects
@@ -22,6 +23,7 @@ def broadcast(message, conn):
 
 def handle_client(conn, address):
     print(f"New connection from: {address}")
+    print(clients)
     conn.send("Welcome to the server!".encode())
 
     while True:
