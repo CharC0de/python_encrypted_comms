@@ -1,6 +1,7 @@
 import os
 import base64
 import socket
+import threading
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -83,6 +84,23 @@ def aes_decrypt(ciphertext, aes_key, iv):
     plaintext = decryptor.update(ciphertext) + decryptor.finalize()
     return plaintext
 
+# Function to handle receiving messages
+
+
+def receive_messages(client_socket, aes_key):
+    while True:
+        try:
+            data = client_socket.recv(1024).split(b'\n')
+            if len(data) == 2:
+                iv, encrypted_response = base64.b64decode(
+                    data[0]), base64.b64decode(data[1])
+                decrypted_response = aes_decrypt(
+                    encrypted_response, aes_key, iv)
+                print(f"Received from server: {decrypted_response.decode()}")
+        except Exception as e:
+            print(f"Error receiving data: {e}")
+            break
+
 # Client-side program
 
 
@@ -91,29 +109,24 @@ def client_program():
     client_socket.connect((host, port))
 
     aes_key = secrets.token_bytes(32)
-
     encrypted_aes_key = encrypt_aes_key_with_rsa(aes_key)
     client_socket.send(base64.b64encode(encrypted_aes_key) + b'\n')
 
-    message = input(" -> ")
+    # Start a thread to receive messages
+    receive_thread = threading.Thread(
+        target=receive_messages, args=(client_socket, aes_key))
+    receive_thread.daemon = True  # Allows thread to exit when the main program exits
+    receive_thread.start()
 
-    while message.lower().strip() != 'exit':
+    # Main thread handles sending messages
+    while True:
+        message = input(" -> ")
+        if message.lower().strip() == 'exit':
+            break
+
         iv, encrypted_message = aes_encrypt(message.encode(), aes_key)
-
-        # Send IV and message, separated by newline
         client_socket.send(base64.b64encode(iv) + b'\n' +
                            base64.b64encode(encrypted_message) + b'\n')
-
-        # Receive response
-        data = client_socket.recv(1024).split(b'\n')
-        if len(data) == 2:
-            iv, encrypted_response = base64.b64decode(
-                data[0]), base64.b64decode(data[1])
-
-            decrypted_response = aes_decrypt(encrypted_response, aes_key, iv)
-            print(f"Received from server: {decrypted_response.decode()}")
-
-        message = input(" -> ")
 
     client_socket.close()
 
